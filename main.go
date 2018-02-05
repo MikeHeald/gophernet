@@ -23,6 +23,19 @@ type neuralNet struct {
 	bHidden *mat.Dense
 	wOut    *mat.Dense
 	bOut    *mat.Dense
+
+    //added
+    hiddenLayerInput       *mat.Dense
+    hiddenLayerActivations *mat.Dense
+    outputLayerInput       *mat.Dense
+    networkError           *mat.Dense
+    slopeOutputLayer       *mat.Dense
+    slopeHiddenLayer       *mat.Dense
+    dOutput                *mat.Dense
+    dHiddenLayer           *mat.Dense
+    wOutAdj                *mat.Dense
+    wHiddenAdj             *mat.Dense
+    errorAtHiddenLayer     *mat.Dense
 }
 
 // neuralNetConfig defines our neural network
@@ -94,7 +107,25 @@ func main() {
 
 // NewNetwork initializes a new neural network.
 func newNetwork(config neuralNetConfig) *neuralNet {
-	return &neuralNet{config: config}
+	return &neuralNet{config: config,
+        hiddenLayerInput: new(mat.Dense),
+        hiddenLayerActivations: new(mat.Dense),
+        outputLayerInput: new(mat.Dense),
+        networkError: new(mat.Dense),
+        slopeOutputLayer: new(mat.Dense),
+        slopeHiddenLayer: new(mat.Dense),
+        dOutput: new(mat.Dense),
+        dHiddenLayer: new(mat.Dense),
+        wOutAdj: new(mat.Dense),
+        wHiddenAdj: new(mat.Dense),
+        errorAtHiddenLayer: new(mat.Dense),
+
+        wHidden: mat.NewDense(config.inputNeurons, config.hiddenNeurons, nil),
+        bHidden: mat.NewDense(1, config.hiddenNeurons, nil),
+        wOut: mat.NewDense(config.hiddenNeurons, config.outputNeurons, nil),
+        bOut: mat.NewDense(1, config.outputNeurons, nil),
+
+    }
 }
 
 // train trains a neural network using backpropagation.
@@ -104,15 +135,10 @@ func (nn *neuralNet) train(x, y *mat.Dense) error {
 	randSource := rand.NewSource(time.Now().UnixNano())
 	randGen := rand.New(randSource)
 
-	wHidden := mat.NewDense(nn.config.inputNeurons, nn.config.hiddenNeurons, nil)
-	bHidden := mat.NewDense(1, nn.config.hiddenNeurons, nil)
-	wOut := mat.NewDense(nn.config.hiddenNeurons, nn.config.outputNeurons, nil)
-	bOut := mat.NewDense(1, nn.config.outputNeurons, nil)
-
-	wHiddenRaw := wHidden.RawMatrix().Data
-	bHiddenRaw := bHidden.RawMatrix().Data
-	wOutRaw := wOut.RawMatrix().Data
-	bOutRaw := bOut.RawMatrix().Data
+	wHiddenRaw := nn.wHidden.RawMatrix().Data
+	bHiddenRaw := nn.bHidden.RawMatrix().Data
+	wOutRaw := nn.wOut.RawMatrix().Data
+	bOutRaw := nn.bOut.RawMatrix().Data
 
 	for _, param := range [][]float64{
 		wHiddenRaw,
@@ -129,84 +155,75 @@ func (nn *neuralNet) train(x, y *mat.Dense) error {
 	output := new(mat.Dense)
 
 	// Use backpropagation to adjust the weights and biases.
-	if err := nn.backpropagate(x, y, wHidden, bHidden, wOut, bOut, output); err != nil {
+	if err := nn.backpropagate(x, y, output); err != nil {
 		return err
 	}
 
-	// Define our trained neural network.
-	nn.wHidden = wHidden
-	nn.bHidden = bHidden
-	nn.wOut = wOut
-	nn.bOut = bOut
 
 	return nil
 }
 
+func (nn *neuralNet) Feedforward(x, y, output *mat.Dense) error {
+    nn.hiddenLayerInput.Mul(x, nn.wHidden)
+    addBHidden := func(_, col int, v float64) float64 { return v + nn.bHidden.At(0, col) }
+    nn.hiddenLayerInput.Apply(addBHidden, nn.hiddenLayerInput)
+
+    applySigmoid := func(_, _ int, v float64) float64 { return sigmoid(v) }
+    nn.hiddenLayerActivations.Apply(applySigmoid, nn.hiddenLayerInput)
+
+    nn.outputLayerInput.Mul(nn.hiddenLayerActivations, nn.wOut)
+    addBOut := func(_, col int, v float64) float64 { return v + nn.bOut.At(0, col) }
+    nn.outputLayerInput.Apply(addBOut, nn.outputLayerInput)
+    output.Apply(applySigmoid, nn.outputLayerInput)
+
+    return nil
+}
+
 // backpropagate completes the backpropagation method.
-func (nn *neuralNet) backpropagate(x, y, wHidden, bHidden, wOut, bOut, output *mat.Dense) error {
+func (nn *neuralNet) backpropagate(x, y, output *mat.Dense) error {
 
 	// Loop over the number of epochs utilizing
 	// backpropagation to train our model.
 	for i := 0; i < nn.config.numEpochs; i++ {
 
 		// Complete the feed forward process.
-		hiddenLayerInput := new(mat.Dense)
-		hiddenLayerInput.Mul(x, wHidden)
-		addBHidden := func(_, col int, v float64) float64 { return v + bHidden.At(0, col) }
-		hiddenLayerInput.Apply(addBHidden, hiddenLayerInput)
+        nn.Feedforward(x, y, output)
 
-		hiddenLayerActivations := new(mat.Dense)
-		applySigmoid := func(_, _ int, v float64) float64 { return sigmoid(v) }
-		hiddenLayerActivations.Apply(applySigmoid, hiddenLayerInput)
-
-		outputLayerInput := new(mat.Dense)
-		outputLayerInput.Mul(hiddenLayerActivations, wOut)
-		addBOut := func(_, col int, v float64) float64 { return v + bOut.At(0, col) }
-		outputLayerInput.Apply(addBOut, outputLayerInput)
-		output.Apply(applySigmoid, outputLayerInput)
 
 		// Complete the backpropagation.
-		networkError := new(mat.Dense)
-		networkError.Sub(y, output)
+		nn.networkError.Sub(y, output)
 
-		slopeOutputLayer := new(mat.Dense)
 		applySigmoidPrime := func(_, _ int, v float64) float64 { return sigmoidPrime(v) }
-		slopeOutputLayer.Apply(applySigmoidPrime, output)
-		slopeHiddenLayer := new(mat.Dense)
-		slopeHiddenLayer.Apply(applySigmoidPrime, hiddenLayerActivations)
+		nn.slopeOutputLayer.Apply(applySigmoidPrime, output)
+		nn.slopeHiddenLayer.Apply(applySigmoidPrime, nn.hiddenLayerActivations)
 
-		dOutput := new(mat.Dense)
-		dOutput.MulElem(networkError, slopeOutputLayer)
-		errorAtHiddenLayer := new(mat.Dense)
-		errorAtHiddenLayer.Mul(dOutput, wOut.T())
+		nn.dOutput.MulElem(nn.networkError, nn.slopeOutputLayer)
+		nn.errorAtHiddenLayer.Mul(nn.dOutput, nn.wOut.T())
 
-		dHiddenLayer := new(mat.Dense)
-		dHiddenLayer.MulElem(errorAtHiddenLayer, slopeHiddenLayer)
+		nn.dHiddenLayer.MulElem(nn.errorAtHiddenLayer, nn.slopeHiddenLayer)
 
 		// Adjust the parameters.
-		wOutAdj := new(mat.Dense)
-		wOutAdj.Mul(hiddenLayerActivations.T(), dOutput)
-		wOutAdj.Scale(nn.config.learningRate, wOutAdj)
-		wOut.Add(wOut, wOutAdj)
+		nn.wOutAdj.Mul(nn.hiddenLayerActivations.T(), nn.dOutput)
+		nn.wOutAdj.Scale(nn.config.learningRate, nn.wOutAdj)
+		nn.wOut.Add(nn.wOut, nn.wOutAdj)
 
-		bOutAdj, err := sumAlongAxis(0, dOutput)
+		bOutAdj, err := sumAlongAxis(0, nn.dOutput)
 		if err != nil {
 			return err
 		}
 		bOutAdj.Scale(nn.config.learningRate, bOutAdj)
-		bOut.Add(bOut, bOutAdj)
+		nn.bOut.Add(nn.bOut, bOutAdj)
 
-		wHiddenAdj := new(mat.Dense)
-		wHiddenAdj.Mul(x.T(), dHiddenLayer)
-		wHiddenAdj.Scale(nn.config.learningRate, wHiddenAdj)
-		wHidden.Add(wHidden, wHiddenAdj)
+		nn.wHiddenAdj.Mul(x.T(), nn.dHiddenLayer)
+		nn.wHiddenAdj.Scale(nn.config.learningRate, nn.wHiddenAdj)
+		nn.wHidden.Add(nn.wHidden, nn.wHiddenAdj)
 
-		bHiddenAdj, err := sumAlongAxis(0, dHiddenLayer)
+		bHiddenAdj, err := sumAlongAxis(0, nn.dHiddenLayer)
 		if err != nil {
 			return err
 		}
 		bHiddenAdj.Scale(nn.config.learningRate, bHiddenAdj)
-		bHidden.Add(bHidden, bHiddenAdj)
+		nn.bHidden.Add(nn.bHidden, bHiddenAdj)
 	}
 
 	return nil
