@@ -107,7 +107,7 @@ func main() {
 
 // NewNetwork initializes a new neural network.
 func newNetwork(config neuralNetConfig) *neuralNet {
-	return &neuralNet{config: config,
+    nn := &neuralNet{config: config,
         hiddenLayerInput: new(mat.Dense),
         hiddenLayerActivations: new(mat.Dense),
         outputLayerInput: new(mat.Dense),
@@ -124,32 +124,33 @@ func newNetwork(config neuralNetConfig) *neuralNet {
         bHidden: mat.NewDense(1, config.hiddenNeurons, nil),
         wOut: mat.NewDense(config.hiddenNeurons, config.outputNeurons, nil),
         bOut: mat.NewDense(1, config.outputNeurons, nil),
-
     }
+    // Initialize biases/weights.
+    randSource := rand.NewSource(time.Now().UnixNano())
+    randGen := rand.New(randSource)
+
+    wHiddenRaw := nn.wHidden.RawMatrix().Data
+    bHiddenRaw := nn.bHidden.RawMatrix().Data
+    wOutRaw := nn.wOut.RawMatrix().Data
+    bOutRaw := nn.bOut.RawMatrix().Data
+
+    for _, param := range [][]float64{
+        wHiddenRaw,
+        bHiddenRaw,
+        wOutRaw,
+        bOutRaw,
+    } {
+        for i := range param {
+            param[i] = randGen.Float64()
+        }
+    }
+
+    return nn
 }
 
 // train trains a neural network using backpropagation.
 func (nn *neuralNet) train(x, y *mat.Dense) error {
 
-	// Initialize biases/weights.
-	randSource := rand.NewSource(time.Now().UnixNano())
-	randGen := rand.New(randSource)
-
-	wHiddenRaw := nn.wHidden.RawMatrix().Data
-	bHiddenRaw := nn.bHidden.RawMatrix().Data
-	wOutRaw := nn.wOut.RawMatrix().Data
-	bOutRaw := nn.bOut.RawMatrix().Data
-
-	for _, param := range [][]float64{
-		wHiddenRaw,
-		bHiddenRaw,
-		wOutRaw,
-		bOutRaw,
-	} {
-		for i := range param {
-			param[i] = randGen.Float64()
-		}
-	}
 
 	// Define the output of the neural network.
 	output := new(mat.Dense)
