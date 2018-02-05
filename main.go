@@ -157,9 +157,11 @@ func (nn *neuralNet) train(x, y *mat.Dense) error {
 	// Define the output of the neural network.
 
 	// Use backpropagation to adjust the weights and biases.
-	if err := nn.backpropagate(x, y); err != nil {
-		return err
-	}
+    for i := 0; i < nn.config.numEpochs; i++ {
+        if err := nn.backpropagate(x, y); err != nil {
+            return err
+        }
+    }
 
 
 	return nil
@@ -181,50 +183,44 @@ func (nn *neuralNet) Feedforward(x *mat.Dense) {
 
 // backpropagate completes the backpropagation method.
 func (nn *neuralNet) backpropagate(x, y *mat.Dense) error {
-
-	// Loop over the number of epochs utilizing
-	// backpropagation to train our model.
-	for i := 0; i < nn.config.numEpochs; i++ {
-
-		// Complete the feed forward process.
-        nn.Feedforward(x)
+    //feed forward    
+    nn.Feedforward(x)
 
 
-		// Complete the backpropagation.
-		nn.networkError.Sub(y, nn.output)
+	// Complete the backpropagation.
+	nn.networkError.Sub(y, nn.output)
 
-		applySigmoidPrime := func(_, _ int, v float64) float64 { return sigmoidPrime(v) }
-		nn.slopeOutputLayer.Apply(applySigmoidPrime, nn.output)
-		nn.slopeHiddenLayer.Apply(applySigmoidPrime, nn.hiddenLayerActivations)
+	applySigmoidPrime := func(_, _ int, v float64) float64 { return sigmoidPrime(v) }
+	nn.slopeOutputLayer.Apply(applySigmoidPrime, nn.output)
+	nn.slopeHiddenLayer.Apply(applySigmoidPrime, nn.hiddenLayerActivations)
 
-		nn.dOutput.MulElem(nn.networkError, nn.slopeOutputLayer)
-		nn.errorAtHiddenLayer.Mul(nn.dOutput, nn.wOut.T())
+    nn.dOutput.MulElem(nn.networkError, nn.slopeOutputLayer)
+	nn.errorAtHiddenLayer.Mul(nn.dOutput, nn.wOut.T())
 
-		nn.dHiddenLayer.MulElem(nn.errorAtHiddenLayer, nn.slopeHiddenLayer)
+	nn.dHiddenLayer.MulElem(nn.errorAtHiddenLayer, nn.slopeHiddenLayer)
 
-		// Adjust the parameters.
-		nn.wOutAdj.Mul(nn.hiddenLayerActivations.T(), nn.dOutput)
-		nn.wOutAdj.Scale(nn.config.learningRate, nn.wOutAdj)
-		nn.wOut.Add(nn.wOut, nn.wOutAdj)
+	// Adjust the parameters.
+	nn.wOutAdj.Mul(nn.hiddenLayerActivations.T(), nn.dOutput)
+	nn.wOutAdj.Scale(nn.config.learningRate, nn.wOutAdj)
+	nn.wOut.Add(nn.wOut, nn.wOutAdj)
 
-		bOutAdj, err := sumAlongAxis(0, nn.dOutput)
-		if err != nil {
-			return err
-		}
-		bOutAdj.Scale(nn.config.learningRate, bOutAdj)
-		nn.bOut.Add(nn.bOut, bOutAdj)
-
-		nn.wHiddenAdj.Mul(x.T(), nn.dHiddenLayer)
-		nn.wHiddenAdj.Scale(nn.config.learningRate, nn.wHiddenAdj)
-		nn.wHidden.Add(nn.wHidden, nn.wHiddenAdj)
-
-		bHiddenAdj, err := sumAlongAxis(0, nn.dHiddenLayer)
-		if err != nil {
-			return err
-		}
-		bHiddenAdj.Scale(nn.config.learningRate, bHiddenAdj)
-		nn.bHidden.Add(nn.bHidden, bHiddenAdj)
+	bOutAdj, err := sumAlongAxis(0, nn.dOutput)
+	if err != nil {
+		return err
 	}
+	bOutAdj.Scale(nn.config.learningRate, bOutAdj)
+	nn.bOut.Add(nn.bOut, bOutAdj)
+
+	nn.wHiddenAdj.Mul(x.T(), nn.dHiddenLayer)
+	nn.wHiddenAdj.Scale(nn.config.learningRate, nn.wHiddenAdj)
+	nn.wHidden.Add(nn.wHidden, nn.wHiddenAdj)
+
+	bHiddenAdj, err := sumAlongAxis(0, nn.dHiddenLayer)
+	if err != nil {
+		return err
+	}
+	bHiddenAdj.Scale(nn.config.learningRate, bHiddenAdj)
+	nn.bHidden.Add(nn.bHidden, bHiddenAdj)
 
 	return nil
 }
