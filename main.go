@@ -107,6 +107,10 @@ func main() {
 	fmt.Printf("\nAccuracy = %0.2f\n\n", accuracy)
 }
 
+func (nn *NeuralNet) GetOutput() []float64{
+    return nn.Output.RawRowView(0)
+}
+
 // NewNetwork initializes a new neural network.
 func NewNetwork(config NeuralNetConfig) *NeuralNet {
     nn := &NeuralNet{config: config,
@@ -148,8 +152,27 @@ func NewNetwork(config NeuralNetConfig) *NeuralNet {
         }
     }
 
+
+
     return nn
 }
+
+func (nn *NeuralNet) addBHidden(_, col int, v float64) float64 {
+    return v + nn.bHidden.At(0, col)
+}
+
+func (nn *NeuralNet) applySigmoid(_, _ int, v float64) float64 {
+    return sigmoid(v)
+}
+
+func (nn *NeuralNet) applySigmoidPrime(_, _ int, v float64) float64 {
+    return sigmoidPrime(v)
+}
+
+func (nn *NeuralNet) addBOut(_, col int, v float64) float64 {
+    return v + nn.bOut.At(0, col)
+}
+
 
 // train trains a neural network using backpropagation.
 func (nn *NeuralNet) train(x, y *mat.Dense, steps int) error {
@@ -181,16 +204,13 @@ func (nn *NeuralNet) train(x, y *mat.Dense, steps int) error {
 
 func (nn *NeuralNet) Feedforward(x *mat.Dense) {
     nn.hiddenLayerInput.Mul(x, nn.wHidden)
-    addBHidden := func(_, col int, v float64) float64 { return v + nn.bHidden.At(0, col) }
-    nn.hiddenLayerInput.Apply(addBHidden, nn.hiddenLayerInput)
+    nn.hiddenLayerInput.Apply(nn.addBHidden, nn.hiddenLayerInput)
 
-    applySigmoid := func(_, _ int, v float64) float64 { return sigmoid(v) }
-    nn.hiddenLayerActivations.Apply(applySigmoid, nn.hiddenLayerInput)
+    nn.hiddenLayerActivations.Apply(nn.applySigmoid, nn.hiddenLayerInput)
 
     nn.outputLayerInput.Mul(nn.hiddenLayerActivations, nn.wOut)
-    addBOut := func(_, col int, v float64) float64 { return v + nn.bOut.At(0, col) }
-    nn.outputLayerInput.Apply(addBOut, nn.outputLayerInput)
-    nn.Output.Apply(applySigmoid, nn.outputLayerInput)
+    nn.outputLayerInput.Apply(nn.addBOut, nn.outputLayerInput)
+    nn.Output.Apply(nn.applySigmoid, nn.outputLayerInput)
 }
 
 // backpropagate completes the backpropagation method.
@@ -198,9 +218,8 @@ func (nn *NeuralNet) Backpropagate(x, y *mat.Dense) error {
 	// Complete the backpropagation.
 	nn.networkError.Sub(y, nn.Output)
 
-	applySigmoidPrime := func(_, _ int, v float64) float64 { return sigmoidPrime(v) }
-	nn.slopeOutputLayer.Apply(applySigmoidPrime, nn.Output)
-	nn.slopeHiddenLayer.Apply(applySigmoidPrime, nn.hiddenLayerActivations)
+	nn.slopeOutputLayer.Apply(nn.applySigmoidPrime, nn.Output)
+	nn.slopeHiddenLayer.Apply(nn.applySigmoidPrime, nn.hiddenLayerActivations)
 
     nn.dOutput.MulElem(nn.networkError, nn.slopeOutputLayer)
 	nn.errorAtHiddenLayer.Mul(nn.dOutput, nn.wOut.T())
