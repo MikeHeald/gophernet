@@ -157,6 +157,29 @@ func NewNetwork(config NeuralNetConfig) *NeuralNet {
     return nn
 }
 
+func (nn *NeuralNet) UnmarshalNN(data [][]byte){
+    nn.wHidden = new(mat.Dense)
+    nn.bHidden = new(mat.Dense)
+    nn.wOut = new(mat.Dense)
+    nn.bOut = new(mat.Dense)
+
+    nn.wHidden.UnmarshalBinary(data[0])
+    nn.bHidden.UnmarshalBinary(data[1])
+    nn.wOut.UnmarshalBinary(data[2])
+    nn.bOut.UnmarshalBinary(data[3])
+}
+
+func (nn *NeuralNet) MarshalNN() [][]byte {
+    wHid, _ := nn.wHidden.MarshalBinary()
+    bHid, _ := nn.bHidden.MarshalBinary()
+    wOut, _ := nn.wOut.MarshalBinary()
+    bOut, _ := nn.bOut.MarshalBinary()
+
+    out := [][]byte{wHid, bHid, wOut, bOut}
+
+    return out
+}
+
 func (nn *NeuralNet) addBHidden(_, col int, v float64) float64 {
     return v + nn.bHidden.At(0, col)
 }
